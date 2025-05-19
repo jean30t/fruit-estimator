@@ -1,40 +1,50 @@
 import streamlit as st
 from ultralytics import YOLO
-import tempfile
+import os
+import urllib.request
 from PIL import Image
+import tempfile
 
-# Load the YOLO model once
-model = YOLO("yolov8n.pt")
-FRUIT_CLASSES = [46, 47, 49]  # banana, apple, orange
+st.set_page_config(page_title="Fruit Estimator", layout="centered")
+st.title("Fruit Estimator using YOLOv8")
 
-st.title("Fruit Box Weight Estimator")
+# Automatically download YOLOv8n model if not already present
+model_path = "yolov8n.pt"
+if not os.path.exists(model_path):
+    st.info("Downloading YOLOv8n model...")
+    url = "https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt"
+    urllib.request.urlretrieve(url, model_path)
+    st.success("Model downloaded!")
 
-box_length = st.number_input("Box Length (cm)", min_value=1.0)
-box_width = st.number_input("Box Width (cm)", min_value=1.0)
-box_height = st.number_input("Box Height (cm)", min_value=1.0)
-avg_fruit_weight = st.number_input("Average Fruit Weight (kg)", min_value=0.01)
-avg_fruit_diameter = st.number_input("Average Fruit Diameter (cm)", min_value=1.0)
+# Load YOLO model
+model = YOLO(model_path)
 
-uploaded_file = st.file_uploader("Upload Fruit Box Image", type=["jpg", "jpeg", "png"])
-
-if uploaded_file and all([box_length, box_width, box_height, avg_fruit_weight, avg_fruit_diameter]):
-    image = Image.open(uploaded_file)
+# Upload image
+uploaded_file = st.file_uploader("Upload an image of fruit", type=["jpg", "jpeg", "png"])
+if uploaded_file:
+    # Display image
+    image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temp_file:
-        image.save(temp_file.name)
-        results = model(temp_file.name)
-        detections = results[0]
-        fruit_count = sum(1 for d in detections.boxes.cls if int(d) in FRUIT_CLASSES)
+    # Save to temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+        image.save(tmp.name)
+        image_path = tmp.name
 
-        layers = max(1, box_height // avg_fruit_diameter)
-        estimated_total_fruits = fruit_count * layers
-        total_weight = estimated_total_fruits * avg_fruit_weight
+    # Run prediction
+    st.info("Detecting fruits...")
+    results = model(image_path)
 
-        st.success("Estimation Complete:")
-        st.write(f"**Detected Fruits (top layer):** {fruit_count}")
-        st.write(f"**Estimated Layers:** {int(layers)}")
-        st.write(f"**Estimated Total Fruits:** {int(estimated_total_fruits)}")
-        st.write(f"**Estimated Stock Weight:** {total_weight:.2f} kg")
+    # Display results
+    res_plotted = results[0].plot()  # Returns a numpy array with bounding boxes
+    st.image(res_plotted, caption="Detected Fruits", use_column_width=True)
 
-        st.image(results[0].plot(), caption="Detected Fruits", use_column_width=True)
+    # Optionally list classes detected
+    boxes = results[0].boxes
+    class_names = results[0].names
+    detected = [class_names[int(cls)] for cls in boxes.cls]
+
+    if detected:
+        st.success(f"Detected objects: {', '.join(detected)}")
+    else:
+        st.warning("No fruits detected.")
