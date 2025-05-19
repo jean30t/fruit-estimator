@@ -1,9 +1,9 @@
 import streamlit as st
 from ultralytics import YOLO
 import tempfile
-import cv2
 from PIL import Image
 
+# Load the YOLO model once
 model = YOLO("yolov8n.pt")
 FRUIT_CLASSES = [46, 47, 49]  # banana, apple, orange
 
